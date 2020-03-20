@@ -153,5 +153,51 @@ class TrustedAggregatingExecutorTest(parameterized.TestCase):
     self.assertEqual(result.numpy(), 30)
 
 
+  # def test_federated_reduce_with_secure_client(self):
+  #   @computations.tf_computation(tf.int32, tf.int32)
+  #   def add_numbers(x, y):
+  #     return x + y
+
+  #   @computations.tf_computation(tf.int32)
+  #   def add_one(x):
+  #     return x + 1
+
+  #   # @computations.federated_computation
+  #   # def comp():
+  #   #   return intrinsics.federated_reduce(
+  #   #     intrinsics.federated_map(add_one,
+  #   #       intrinsics.federated_value(10, placements.CLIENTS))
+  #   #       , 0, add_numbers)
+
+
+  #   @computations.federated_computation
+  #   def comp():
+  #     return intrinsics.federated_map(add_one,
+  #         intrinsics.federated_value(10, placements.CLIENTS))
+
+
+  #   result = _run_test_comp_produces_aggr_value(self, comp, num_clients=3)
+  #   self.assertEqual(result.numpy(), 33)
+
+  def test_federated_map(self):
+    @computations.tf_computation(tf.int32)
+    def add_one(x):
+      return x + 1
+
+    @computations.federated_computation
+    def comp():
+      return intrinsics.federated_map(
+          add_one, intrinsics.federated_value(10, placements.CLIENTS))
+
+    val = _run_test_comp(comp, num_clients=3)
+    self.assertIsInstance(val, federating_executor.FederatingExecutorValue)
+    self.assertEqual(str(val.type_signature), '{int32}@CLIENTS')
+    self.assertIsInstance(val.internal_representation, list)
+    self.assertLen(val.internal_representation, 3)
+    for v in val.internal_representation:
+      self.assertIsInstance(v, eager_tf_executor.EagerValue)
+      self.assertEqual(v.internal_representation.numpy(), 11)
+
+
 if __name__ == '__main__':
   absltest.main()

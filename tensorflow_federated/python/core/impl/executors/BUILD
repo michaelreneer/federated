@@ -497,6 +497,34 @@ py_test(
     ],
 )
 
+py_test(
+    name = "secure_client_test",
+    size = "small",
+    srcs = ["secure_client_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":default_executor",
+        ":eager_tf_executor",
+        ":executor_test_utils",
+        ":federating_executor",
+        ":reference_resolving_executor",
+        "//tensorflow_federated/proto/v0:computation_py_pb2",
+        "//tensorflow_federated/python/common_libs:anonymous_tuple",
+        "//tensorflow_federated/python/core/api:computation_types",
+        "//tensorflow_federated/python/core/api:computations",
+        "//tensorflow_federated/python/core/api:intrinsics",
+        "//tensorflow_federated/python/core/api:placements",
+        "//tensorflow_federated/python/core/impl:computation_impl",
+        "//tensorflow_federated/python/core/impl/compiler:building_block_factory",
+        "//tensorflow_federated/python/core/impl/compiler:building_blocks",
+        "//tensorflow_federated/python/core/impl/compiler:intrinsic_defs",
+        "//tensorflow_federated/python/core/impl/compiler:type_factory",
+        "//tensorflow_federated/python/core/impl/compiler:type_serialization",
+    ],
+)
+
+
 py_library(
     name = "reference_resolving_executor",
     srcs = ["reference_resolving_executor.py"],
