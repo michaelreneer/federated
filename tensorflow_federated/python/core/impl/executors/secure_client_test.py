@@ -125,21 +125,30 @@ class SecureClientTest(parameterized.TestCase):
   #   def add_numbers(x, y):
   #     return x + y
 
-  #   @computations.tf_computation(tf.int32)
-  #   @tf.function
-  #   def encrypt_tensor(x):
-  #     tf.print("This tensor is encrypted:", x)
-  #     return tf.add(x, 1)
+  #   @computations.tf_computation(tf.int32, tf.int32)
+  #   def encrypt_tensor(x, y):
+  #     return x + y
+
+  #   # @computations.federated_computation
+  #   # def comp():
+  #   #   return intrinsics.federated_reduce(
+  #   #     intrinsics.federated_map(encrypt_tensor,
+  #   #       [intrinsics.federated_value(10, placements.CLIENTS), intrinsics.federated_value(10, placements.CLIENTS)]
+  #   #       ), 
+  #   #       0, add_numbers)
 
   #   @computations.federated_computation
   #   def comp():
-  #     return intrinsics.federated_reduce(
-  #       intrinsics.federated_map(encrypt_tensor,
-  #         intrinsics.federated_value(10, placements.CLIENTS)), 
-  #         0, add_numbers)
+  #     return intrinsics.federated_map(#encrypt_tensor,
+  #         computations.tf_computation(lambda x, y: x > 10,
+  #                                     [tf.int32, tf.int32]),
+  #         [intrinsics.federated_value(10, placements.CLIENTS), intrinsics.federated_value(1, placements.CLIENTS)]
+  #         # intrinsics.federated_zip((intrinsics.federated_value(10, placements.CLIENTS), 
+  #         # intrinsics.federated_value(10, placements.CLIENTS)))
+  #         )
 
   #   result = _run_test_comp_produces_federated_value(self, comp, num_clients=3)
-  #   self.assertEqual(result.numpy(), 33)
+  #   #self.assertEqual(result.numpy(), 60)
 
   def test_federated_secure_client(self):
     @computations.tf_computation(tf.int32, tf.int32)
@@ -154,6 +163,29 @@ class SecureClientTest(parameterized.TestCase):
 
     result = _run_test_comp_produces_federated_value(self, comp, num_clients=3)
     self.assertEqual(result.numpy(), 30)
+
+  def test_federated_zip_secure_client_values(self):
+    @computations.tf_computation(tf.int32, tf.int32)
+    def add_numbers(x, y):
+      return x + y
+
+    @computations.tf_computation(tf.int32, tf.int32)
+    def encrypt_tensor(x, y):
+      return tf.add(x, y)
+
+    @computations.federated_computation
+    def comp():
+      return intrinsics.federated_reduce(
+        intrinsics.federated_map(encrypt_tensor,
+          [intrinsics.federated_value(10, placements.CLIENTS), intrinsics.federated_value(10, placements.CLIENTS)]
+          ), 
+          0, add_numbers)
+
+
+    result = _run_test_comp_produces_federated_value(self, comp, num_clients=3)
+    self.assertEqual(result.numpy(), 60)
+
+  
 
 
 if __name__ == '__main__':
