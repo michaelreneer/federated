@@ -521,6 +521,7 @@ py_test(
         "//tensorflow_federated/python/core/impl/compiler:intrinsic_defs",
         "//tensorflow_federated/python/core/impl/compiler:type_factory",
         "//tensorflow_federated/python/core/impl/compiler:type_serialization",
+        "//tensorflow_federated/python/core/impl:test",
     ],
 )
 

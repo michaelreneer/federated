@@ -24,6 +24,7 @@ from tensorflow_federated.python.common_libs import anonymous_tuple
 from tensorflow_federated.python.common_libs import py_typecheck
 from tensorflow_federated.python.common_libs import tracing
 from tensorflow_federated.python.core.api import computation_types
+from tensorflow_federated.python.core.api import computations
 from tensorflow_federated.python.core.impl import computation_impl
 from tensorflow_federated.python.core.impl import type_utils
 from tensorflow_federated.python.core.impl.compiler import intrinsic_defs
@@ -459,6 +460,7 @@ class FederatingExecutor(executor_base.Executor):
 
   @tracing.trace
   async def _map(self, arg, all_equal=None):
+    #import pdb; pdb.set_trace()
     self._check_arg_is_anonymous_tuple(arg)
     if len(arg.internal_representation) != 2:
       raise ValueError('Expected 2 elements in the tuple, found {}.'.format(
@@ -562,6 +564,68 @@ class FederatingExecutor(executor_base.Executor):
   async def _compute_intrinsic_federated_zip_at_clients(self, arg):
     return await self._zip(arg, placement_literals.CLIENTS, all_equal=False)
 
+  # @tracing.trace
+  # async def _compute_intrinsic_federated_reduce(self, arg):
+  #   self._check_arg_is_anonymous_tuple(arg)
+  #   if len(arg.internal_representation) != 3:
+  #     raise ValueError(
+  #         'Expected 3 elements in the `federated_reduce()` argument tuple, '
+  #         'found {}.'.format(len(arg.internal_representation)))
+  #   #import pdb; pdb.set_trace()
+  #   val_type = arg.type_signature[0]
+  #   py_typecheck.check_type(val_type, computation_types.FederatedType)
+  #   item_type = val_type.member
+  #   zero_type = arg.type_signature[1]
+  #   op_type = arg.type_signature[2]
+  #   type_utils.check_equivalent_types(
+  #       op_type, type_factory.reduction_op(zero_type, item_type))
+
+  #   val = arg.internal_representation[0]
+  #   py_typecheck.check_type(val, list)
+  #   child = self._target_executors[placement_literals.SERVER][0]
+
+  #   async def _move(v):
+  #     return await child.create_value(await v.compute(), item_type)
+
+  #   items = await asyncio.gather(*[_move(v) for v in val])
+
+  #   zero = await child.create_value(
+  #       await (await self.create_selection(arg, index=1)).compute(), zero_type)
+  #   op = await child.create_value(arg.internal_representation[2], op_type)
+
+  #   result = zero
+  #   for item in items:
+  #     result = await child.create_call(
+  #         op, await child.create_tuple(
+  #             anonymous_tuple.AnonymousTuple([(None, result), (None, item)])))
+  #   return FederatingExecutorValue([result],
+  #                                  computation_types.FederatedType(
+  #                                      result.type_signature,
+  #                                      placement_literals.SERVER,
+  #                                      all_equal=True))
+
+  @tracing.trace
+  async def _compute_intrinsic_encypting_client(self, arg):
+
+    @computations.tf_computation(tf.int32)
+    @tf.function
+    def encrypt_tensor(x):
+      tf.print("This tensor is encrypted:", x)
+      return tf.identity(x)
+
+    fn_type = encrypt_tensor.type_signature
+    fn = encrypt_tensor._computation_proto
+    val_type = arg.type_signature[0]
+    val = arg.internal_representation[0]
+
+    return await self._compute_intrinsic_federated_map(
+        FederatingExecutorValue(
+            anonymous_tuple.AnonymousTuple(
+                [(None, fn), (None, val)]),
+            computation_types.NamedTupleType(
+                (fn_type, val_type))))
+
+
   @tracing.trace
   async def _compute_intrinsic_federated_reduce(self, arg):
     self._check_arg_is_anonymous_tuple(arg)
@@ -570,7 +634,10 @@ class FederatingExecutor(executor_base.Executor):
           'Expected 3 elements in the `federated_reduce()` argument tuple, '
           'found {}.'.format(len(arg.internal_representation)))
 
-    val_type = arg.type_signature[0]
+    # Encrypt client values
+    enc_client_arg = await self._compute_intrinsic_encypting_client(arg)
+
+    val_type = enc_client_arg.type_signature
     py_typecheck.check_type(val_type, computation_types.FederatedType)
     item_type = val_type.member
     zero_type = arg.type_signature[1]
@@ -578,7 +645,7 @@ class FederatingExecutor(executor_base.Executor):
     type_utils.check_equivalent_types(
         op_type, type_factory.reduction_op(zero_type, item_type))
 
-    val = arg.internal_representation[0]
+    val = enc_client_arg.internal_representation
     py_typecheck.check_type(val, list)
     child = self._target_executors[placement_literals.SERVER][0]
 
@@ -601,6 +668,7 @@ class FederatingExecutor(executor_base.Executor):
                                        result.type_signature,
                                        placement_literals.SERVER,
                                        all_equal=True))
+
 
   @tracing.trace
   async def _compute_intrinsic_federated_aggregate(self, arg):
