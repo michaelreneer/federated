@@ -147,10 +147,8 @@ class SecureClientTest(parameterized.TestCase):
     def comp():
       return intrinsics.federated_reduce(
         intrinsics.federated_map(encrypt_tensor,
-          [intrinsics.federated_value(10, placements.CLIENTS), intrinsics.federated_value(10, placements.CLIENTS)]
-          ), 
+          intrinsics.federated_value((10, 10), placements.CLIENTS)), 
           0, add_numbers)
-
 
     result = _run_test_comp_produces_federated_value(self, comp, num_clients=3)
     self.assertEqual(result.numpy(), 60)
