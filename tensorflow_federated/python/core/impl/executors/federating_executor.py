@@ -35,6 +35,10 @@ from tensorflow_federated.python.core.impl.executors import executor_base
 from tensorflow_federated.python.core.impl.executors import executor_utils
 from tensorflow_federated.python.core.impl.executors import executor_value_base
 
+from tensorflow_federated.python.core.api import intrinsics
+from tensorflow_federated.python.core.api import placements
+from tensorflow_federated.python.core.impl.executors import eager_tf_executor
+
 
 class FederatingExecutorValue(executor_value_base.ExecutorValue):
   """Represents a value embedded in the federated executor."""
@@ -430,6 +434,7 @@ class FederatingExecutor(executor_base.Executor):
 
   @tracing.trace
   async def _place(self, arg, placement):
+    #import pdb; pdb.set_trace()
     py_typecheck.check_type(placement, placement_literals.PlacementLiteral)
     children = self._target_executors[placement]
     val = await arg.compute()
@@ -565,23 +570,61 @@ class FederatingExecutor(executor_base.Executor):
     return await self._zip(arg, placement_literals.CLIENTS, all_equal=False)
 
   @tracing.trace
+  async def _compute_public_key(self):
+    tensor_type = computation_types.TensorType(tf.int32)
+
+    p_k = await executor_utils.embed_tf_scalar_constant(
+        self, tensor_type, 132343242)
+
+    p_k_shared = await self._compute_intrinsic_federated_value_at_clients(
+        p_k
+    )
+    return p_k_shared
+
+  @tracing.trace
+  async def _zip_val_key(self, val, key):
+
+    enc_ex = eager_tf_executor.EagerTFExecutor()
+
+    val_key_zipped = []
+
+    for i in range(len(val)):
+      eager_tf = await enc_ex.create_value(
+            anonymous_tuple.AnonymousTuple(
+                [(None, val[i].internal_representation), 
+                (None, key.internal_representation[i].internal_representation)]),
+            computation_types.NamedTupleType(
+                (computation_types.TensorType(tf.int32), 
+                computation_types.TensorType(tf.int32))))
+
+      val_key_zipped.append(eager_tf)
+    return val_key_zipped
+
+  
+  @tracing.trace
   async def _compute_intrinsic_encypting_client(self, arg):
 
-    @computations.tf_computation(tf.int32)
+    @computations.tf_computation(tf.int32, tf.int32)
     @tf.function
-    def encrypt_tensor(x):
+    def encrypt_tensor(x, y):
       tf.print("This tensor is encrypted:", x)
+      tf.print("The public key is ", y)
       return tf.identity(x)
+
+    # Generate and share public values
+    p_k_shared = await self._compute_public_key()
 
     fn_type = encrypt_tensor.type_signature
     fn = encrypt_tensor._computation_proto
     val_type = arg.type_signature[0]
     val = arg.internal_representation[0]
+      
+    val_key_zipped = await self._zip_val_key(val, p_k_shared)
 
     return await self._compute_intrinsic_federated_map(
         FederatingExecutorValue(
             anonymous_tuple.AnonymousTuple(
-                [(None, fn), (None, val)]),
+                [(None, fn), (None,  val_key_zipped)]),
             computation_types.NamedTupleType(
                 (fn_type, val_type))))
 
@@ -593,12 +636,12 @@ class FederatingExecutor(executor_base.Executor):
           'Expected 3 elements in the `federated_reduce()` argument tuple, '
           'found {}.'.format(len(arg.internal_representation)))
 
-    # Encrypt client values
-    # enc_client_arg = await self._compute_intrinsic_encypting_client(arg)
-    # val_type = enc_client_arg.type_signature
-    # val = enc_client_arg.internal_representation
+    #Encrypt client values
+    enc_client_arg = await self._compute_intrinsic_encypting_client(arg)
+    val_type = enc_client_arg.type_signature
+    val = enc_client_arg.internal_representation
 
-    val_type = arg.type_signature[0]
+    #val_type = arg.type_signature[0]
     py_typecheck.check_type(val_type, computation_types.FederatedType)
     item_type = val_type.member
     zero_type = arg.type_signature[1]
@@ -606,7 +649,7 @@ class FederatingExecutor(executor_base.Executor):
     type_utils.check_equivalent_types(
         op_type, type_factory.reduction_op(zero_type, item_type))
 
-    val = arg.internal_representation[0]
+    #val = arg.internal_representation[0]
     py_typecheck.check_type(val, list)
     child = self._target_executors[placement_literals.SERVER][0]
 
