@@ -611,12 +611,14 @@ class FederatingExecutor(executor_base.Executor):
       nonce = tf.random.uniform((), 100, 1000, tf.int32)
       pk_c = tf.random.uniform((), 100, 1000, tf.int32)
       sk_c = tf.random.uniform((), 100, 1000, tf.int32)
+      variant = tf.data.Dataset.from_tensor_slices([1]) 
 
       tf.print("This tensor is encrypted:", x)
       tf.print("Secure aggregator public key:", aggregator_key)
       tf.print("Client public key:", pk_c)
       tf.print("Client secret key:", sk_c)
       tf.print("Nonce value: ", nonce)
+      tf.print("I can work with variant", variant._variant_tensor.dtype)
       # Note: we should also return to the secure aggregator
       # the nonce and client public key as tuple. The secure 
       # aggregator should take this tuple as arg to decode tensors
