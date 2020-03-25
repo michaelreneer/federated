@@ -570,16 +570,18 @@ class FederatingExecutor(executor_base.Executor):
     return await self._zip(arg, placement_literals.CLIENTS, all_equal=False)
 
   @tracing.trace
-  async def _compute_public_key(self):
+  async def _secure_aggregator_public_key(self):
+
     tensor_type = computation_types.TensorType(tf.int32)
 
-    p_k = await executor_utils.embed_tf_scalar_constant(
+    pk_a = await executor_utils.embed_tf_scalar_constant(
         self, tensor_type, 132343242)
 
-    p_k_shared = await self._compute_intrinsic_federated_value_at_clients(
-        p_k
+    # Share public key with each clients
+    pk_a_shared = await self._compute_intrinsic_federated_value_at_clients(
+        pk_a
     )
-    return p_k_shared
+    return pk_a_shared
 
   @tracing.trace
   async def _zip_val_key(self, val, key):
@@ -605,20 +607,30 @@ class FederatingExecutor(executor_base.Executor):
 
     @computations.tf_computation(tf.int32, tf.int32)
     @tf.function
-    def encrypt_tensor(x, y):
+    def encrypt_tensor(x, aggregator_key):
+      nonce = tf.random.uniform((), 100, 1000, tf.int32)
+      pk_c = tf.random.uniform((), 100, 1000, tf.int32)
+      sk_c = tf.random.uniform((), 100, 1000, tf.int32)
+
       tf.print("This tensor is encrypted:", x)
-      tf.print("The public key is ", y)
+      tf.print("Secure aggregator public key:", aggregator_key)
+      tf.print("Client public key:", pk_c)
+      tf.print("Client secret key:", sk_c)
+      tf.print("Nonce value: ", nonce)
+      # Note: we should also return to the secure aggregator
+      # the nonce and client public key as tuple. The secure 
+      # aggregator should take this tuple as arg to decode tensors
       return tf.identity(x)
 
-    # Generate and share public values
-    p_k_shared = await self._compute_public_key()
+    # Secure aggregator generate public key and share with clients
+    pk_aggregator = await self._secure_aggregator_public_key()
 
     fn_type = encrypt_tensor.type_signature
     fn = encrypt_tensor._computation_proto
     val_type = arg.type_signature[0]
     val = arg.internal_representation[0]
       
-    val_key_zipped = await self._zip_val_key(val, p_k_shared)
+    val_key_zipped = await self._zip_val_key(val, pk_aggregator)
 
     return await self._compute_intrinsic_federated_map(
         FederatingExecutorValue(
@@ -656,7 +668,7 @@ class FederatingExecutor(executor_base.Executor):
       return await child.create_value(await v.compute(), item_type)
 
     items = await asyncio.gather(*[_move(v) for v in val])
-
+    
     zero = await child.create_value(
         await (await self.create_selection(arg, index=1)).compute(), zero_type)
     op = await child.create_value(arg.internal_representation[2], op_type)
