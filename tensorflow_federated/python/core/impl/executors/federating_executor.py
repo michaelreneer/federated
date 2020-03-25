@@ -571,11 +571,13 @@ class FederatingExecutor(executor_base.Executor):
 
   @tracing.trace
   async def _secure_aggregator_public_key(self):
-
-    tensor_type = computation_types.TensorType(tf.int32)
+    
+    # Generate as string for test purpose
+    # Libsodium use variant type for the key
+    tensor_type = computation_types.TensorType(tf.string)
 
     pk_a = await executor_utils.embed_tf_scalar_constant(
-        self, tensor_type, 132343242)
+        self, tensor_type, '132343242')
 
     # Share public key with each clients
     pk_a_shared = await self._compute_intrinsic_federated_value_at_clients(
@@ -596,7 +598,7 @@ class FederatingExecutor(executor_base.Executor):
                 (None, key.internal_representation[i].internal_representation)]),
             computation_types.NamedTupleType(
                 (computation_types.TensorType(tf.int32), 
-                computation_types.TensorType(tf.int32))))
+                computation_types.TensorType(tf.string))))
 
       val_key_zipped.append(eager_tf)
     return val_key_zipped
@@ -605,7 +607,7 @@ class FederatingExecutor(executor_base.Executor):
   @tracing.trace
   async def _encrypt_client_tensors(self, arg):
 
-    @computations.tf_computation(tf.int32, tf.int32)
+    @computations.tf_computation(tf.int32, tf.string)
     @tf.function
     def encrypt_tensor(x, aggregator_key):
       nonce = tf.random.uniform((), 100, 1000, tf.int32)
