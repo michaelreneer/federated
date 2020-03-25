@@ -585,7 +585,6 @@ class FederatingExecutor(executor_base.Executor):
   async def _zip_val_key(self, val, key):
 
     enc_ex = eager_tf_executor.EagerTFExecutor()
-
     val_key_zipped = []
 
     for i in range(len(val)):
@@ -602,7 +601,7 @@ class FederatingExecutor(executor_base.Executor):
 
   
   @tracing.trace
-  async def _compute_intrinsic_encypting_client(self, arg):
+  async def _encrypt_client_tensors(self, arg):
 
     @computations.tf_computation(tf.int32, tf.int32)
     @tf.function
@@ -637,7 +636,7 @@ class FederatingExecutor(executor_base.Executor):
           'found {}.'.format(len(arg.internal_representation)))
 
     #Encrypt client values
-    enc_client_arg = await self._compute_intrinsic_encypting_client(arg)
+    enc_client_arg = await self._encrypt_client_tensors(arg)
     val_type = enc_client_arg.type_signature
     val = enc_client_arg.internal_representation
 
