@@ -450,30 +450,6 @@ py_test(
     ],
 )
 
-py_library(
-    name = "trusted_aggregating_executor",
-    srcs = ["trusted_aggregating_executor.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":executor_base",
-        ":executor_utils",
-        ":executor_value_base",
-        ":federating_executor",
-        "//tensorflow_federated/proto/v0:computation_py_pb2",
-        "//tensorflow_federated/python/common_libs:anonymous_tuple",
-        "//tensorflow_federated/python/common_libs:py_typecheck",
-        "//tensorflow_federated/python/common_libs:tracing",
-        "//tensorflow_federated/python/core/api:computation_types",
-        "//tensorflow_federated/python/core/api:intrinsics",
-        "//tensorflow_federated/python/core/impl:computation_impl",
-        "//tensorflow_federated/python/core/impl:type_utils",
-        "//tensorflow_federated/python/core/impl/compiler:intrinsic_defs",
-        "//tensorflow_federated/python/core/impl/compiler:placement_literals",
-        "//tensorflow_federated/python/core/impl/compiler:type_factory",
-        "//tensorflow_federated/python/core/impl/compiler:type_serialization",
-    ],
-)
-
 py_test(
     name = "trusted_aggregating_executor_test",
     size = "small",

@@ -35,9 +35,6 @@ from tensorflow_federated.python.core.impl.executors import executor_base
 from tensorflow_federated.python.core.impl.executors import executor_utils
 from tensorflow_federated.python.core.impl.executors import executor_value_base
 
-from tensorflow_federated.python.core.api import intrinsics
-from tensorflow_federated.python.core.api import placements
-from tensorflow_federated.python.core.impl.executors import eager_tf_executor
 
 
 class FederatingExecutorValue(executor_value_base.ExecutorValue):
@@ -434,7 +431,6 @@ class FederatingExecutor(executor_base.Executor):
 
   @tracing.trace
   async def _place(self, arg, placement):
-    #import pdb; pdb.set_trace()
     py_typecheck.check_type(placement, placement_literals.PlacementLiteral)
     children = self._target_executors[placement]
     val = await arg.compute()
@@ -465,7 +461,6 @@ class FederatingExecutor(executor_base.Executor):
 
   @tracing.trace
   async def _map(self, arg, all_equal=None):
-    #import pdb; pdb.set_trace()
     self._check_arg_is_anonymous_tuple(arg)
     if len(arg.internal_representation) != 2:
       raise ValueError('Expected 2 elements in the tuple, found {}.'.format(
