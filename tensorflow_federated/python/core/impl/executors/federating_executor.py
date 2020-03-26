@@ -587,20 +587,21 @@ class FederatingExecutor(executor_base.Executor):
 
   @tracing.trace
   async def _zip_val_key(self, val, key):
-
-    enc_ex = eager_tf_executor.EagerTFExecutor()
+    
+    # zip values and keys EagerValues on each client using their 
+    # respective eager executor
     val_key_zipped = []
-
     for i in range(len(val)):
-      eager_tf = await enc_ex.create_value(
-            anonymous_tuple.AnonymousTuple(
-                [(None, val[i].internal_representation), 
-                (None, key.internal_representation[i].internal_representation)]),
-            computation_types.NamedTupleType(
-                (computation_types.TensorType(tf.int32), 
-                computation_types.TensorType(tf.string))))
+      client_ex = self._target_executors[placement_literals.CLIENTS][i]
+      val_eager_val = val[i]
+      key_eager_val = key.internal_representation[i]
 
-      val_key_zipped.append(eager_tf)
+      k_v_zip = await client_ex.create_tuple(
+        anonymous_tuple.AnonymousTuple([(None, val_eager_val), (None, key_eager_val)])
+      )
+
+      val_key_zipped.append(k_v_zip)
+
     return val_key_zipped
 
   
