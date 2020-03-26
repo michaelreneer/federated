@@ -565,7 +565,7 @@ class FederatingExecutor(executor_base.Executor):
     return await self._zip(arg, placement_literals.CLIENTS, all_equal=False)
 
   @tracing.trace
-  async def _secure_aggregator_public_key(self):
+  async def _trusted_aggregator_public_key(self):
     
     # Generate as string for test purpose
     # Libsodium use variant type for the key
@@ -612,18 +612,18 @@ class FederatingExecutor(executor_base.Executor):
       variant = tf.data.Dataset.from_tensor_slices([1]) 
 
       tf.print("This tensor is encrypted:", x)
-      tf.print("Secure aggregator public key:", aggregator_key)
+      tf.print("Trusted aggregator public key:", aggregator_key)
       tf.print("Client public key:", pk_c)
       tf.print("Client secret key:", sk_c)
       tf.print("Nonce value: ", nonce)
       tf.print("I can work with variant", variant._variant_tensor.dtype)
-      # Note: we should also return to the secure aggregator
-      # the nonce and client public key as tuple. The secure 
+      # Note: we should also return to the trusted aggregator
+      # the nonce and client public key as tuple. The trusted 
       # aggregator should take this tuple as arg to decode tensors
       return tf.identity(x)
 
-    # Secure aggregator generate public key and share with clients
-    pk_aggregator = await self._secure_aggregator_public_key()
+    # Trusted aggregator generate public key and share with clients
+    pk_aggregator = await self._trusted_aggregator_public_key()
 
     fn_type = encrypt_tensor.type_signature
     fn = encrypt_tensor._computation_proto
