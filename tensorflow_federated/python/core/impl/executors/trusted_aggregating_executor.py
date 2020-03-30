@@ -23,6 +23,7 @@ from tensorflow_federated.proto.v0 import computation_pb2 as pb
 from tensorflow_federated.python.common_libs import anonymous_tuple
 from tensorflow_federated.python.common_libs import py_typecheck
 from tensorflow_federated.python.common_libs import tracing
+from tensorflow_federated.python.core.api import computations
 from tensorflow_federated.python.core.api import computation_types
 from tensorflow_federated.python.core.api import intrinsics
 from tensorflow_federated.python.core.impl import computation_impl
@@ -392,6 +393,84 @@ class TrustedAggregatingExecutor(executor_base.Executor):
                             anonymous_tuple.AnonymousTuple)
 
   @tracing.trace
+  async def _trusted_aggregator_public_key(self):
+    
+    # Generate as string for test purpose
+    # Libsodium use variant type for the key
+    tensor_type = computation_types.TensorType(tf.string)
+
+    pk_a = await executor_utils.embed_tf_scalar_constant(
+        self, tensor_type, '132343242')
+
+    # Share public key with each clients
+    federating_ex = self._target_executors[None][0]
+    pk_a_shared = await federating_ex._compute_intrinsic_federated_value_at_clients(
+        pk_a
+    )
+    return pk_a_shared
+
+  @tracing.trace
+  async def _zip_val_key(self, val, key):
+    #import pdb; pdb.set_trace()
+    val = val[0]._value
+    # zip values and keys EagerValues on each client using their 
+    # respective eager executor
+    val_key_zipped = []
+    for i in range(len(val)):
+      client_ex = self._target_executors[placement_literals.CLIENTS][i]
+      val_eager_val = val[i]
+      key_eager_val = key.internal_representation[i]
+
+      k_v_zip = await client_ex.create_tuple(
+        anonymous_tuple.AnonymousTuple([(None, val_eager_val), (None, key_eager_val)])
+      )
+
+      val_key_zipped.append(k_v_zip)
+
+    return val_key_zipped
+
+  
+  @tracing.trace
+  async def _encrypt_client_tensors(self, arg):
+
+    @computations.tf_computation(tf.int32, tf.string)
+    @tf.function
+    def encrypt_tensor(x, aggregator_key):
+      nonce = tf.random.uniform((), 100, 1000, tf.int32)
+      pk_c = tf.random.uniform((), 100, 1000, tf.int32)
+      sk_c = tf.random.uniform((), 100, 1000, tf.int32)
+      variant = tf.data.Dataset.from_tensor_slices([1]) 
+
+      tf.print("This tensor is encrypted:", x)
+      tf.print("Trusted aggregator public key:", aggregator_key)
+      tf.print("Client public key:", pk_c)
+      tf.print("Client secret key:", sk_c)
+      tf.print("Nonce value: ", nonce)
+      tf.print("I can work with variant", variant._variant_tensor.dtype)
+      # Note: we should also return to the trusted aggregator
+      # the nonce and client public key as tuple. The trusted 
+      # aggregator should take this tuple as arg to decode tensors
+      return tf.identity(x)
+
+    # Trusted aggregator generate public key and share with clients
+    pk_aggregator = await self._trusted_aggregator_public_key()
+
+    fn_type = encrypt_tensor.type_signature
+    fn = encrypt_tensor._computation_proto
+    val_type = arg.type_signature[0]
+    val = arg.internal_representation[0]
+      
+    val_key_zipped = await self._zip_val_key(val, pk_aggregator)
+    federating_ex = self._target_executors[None][0]
+
+    return await federating_ex._compute_intrinsic_federated_map(
+        federating_executor.FederatingExecutorValue(
+            anonymous_tuple.AnonymousTuple(
+                [(None, fn), (None,  val_key_zipped)]),
+            computation_types.NamedTupleType(
+                (fn_type, val_type))))
+
+  @tracing.trace
   async def _compute_intrinsic_federated_reduce(self, arg):
     self._check_arg_is_anonymous_tuple(arg)
     if len(arg.internal_representation) != 3:
@@ -399,7 +478,15 @@ class TrustedAggregatingExecutor(executor_base.Executor):
           'Expected 3 elements in the `federated_reduce()` argument tuple, '
           'found {}.'.format(len(arg.internal_representation)))
 
-    val_type = arg.type_signature[0]
+    
+    #Encrypt client values
+    enc_client_arg = await self._encrypt_client_tensors(arg)
+    val_type = enc_client_arg.type_signature
+    val = enc_client_arg.internal_representation
+
+    #import pdb; pdb.set_trace()
+
+    #val_type = arg.type_signature[0]
     py_typecheck.check_type(val_type, computation_types.FederatedType)
     item_type = val_type.member
     zero_type = arg.type_signature[1]
@@ -407,11 +494,11 @@ class TrustedAggregatingExecutor(executor_base.Executor):
     type_utils.check_equivalent_types(
         op_type, type_factory.reduction_op(zero_type, item_type))
 
-    val = arg.internal_representation[0]
+    #val = arg.internal_representation[0]
     py_typecheck.check_type(val, list)
     py_typecheck.check_len(val, 1)
-    py_typecheck.check_type(val[0], federating_executor.FederatingExecutorValue)
-    vals = val[0].internal_representation
+    #py_typecheck.check_type(val[0], federating_executor.FederatingExecutorValue)
+    #vals = val[0].internal_representation
 
     child = self._target_executors[None][0]
     aggregator_child = self._target_executors[AGGREGATOR][0]
