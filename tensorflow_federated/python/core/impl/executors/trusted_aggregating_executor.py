@@ -482,11 +482,8 @@ class TrustedAggregatingExecutor(executor_base.Executor):
     #Encrypt client values
     enc_client_arg = await self._encrypt_client_tensors(arg)
     val_type = enc_client_arg.type_signature
-    val = enc_client_arg.internal_representation
+    vals = enc_client_arg.internal_representation
 
-    #import pdb; pdb.set_trace()
-
-    #val_type = arg.type_signature[0]
     py_typecheck.check_type(val_type, computation_types.FederatedType)
     item_type = val_type.member
     zero_type = arg.type_signature[1]
@@ -494,11 +491,6 @@ class TrustedAggregatingExecutor(executor_base.Executor):
     type_utils.check_equivalent_types(
         op_type, type_factory.reduction_op(zero_type, item_type))
 
-    #val = arg.internal_representation[0]
-    py_typecheck.check_type(val, list)
-    py_typecheck.check_len(val, 1)
-    #py_typecheck.check_type(val[0], federating_executor.FederatingExecutorValue)
-    #vals = val[0].internal_representation
 
     child = self._target_executors[None][0]
     aggregator_child = self._target_executors[AGGREGATOR][0]

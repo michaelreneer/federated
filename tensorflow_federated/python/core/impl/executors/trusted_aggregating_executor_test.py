@@ -139,19 +139,6 @@ def _produce_test_value(
 
 class TrustedAggregatingExecutorTest(parameterized.TestCase):
 
-  # def test_federated_reduce_with_simple_integer_sum(self):
-  #   @computations.tf_computation(tf.int32, tf.int32)
-  #   def add_numbers(x, y):
-  #     return x + y
-
-  #   @computations.federated_computation
-  #   def comp():
-  #     return intrinsics.federated_reduce(
-  #         intrinsics.federated_value(10, placements.CLIENTS), 0, add_numbers)
-
-  #   result = _run_test_comp_produces_aggr_value(self, comp, num_clients=3)
-  #   self.assertEqual(result.numpy(), 30)
-
   def test_federated_zip_secure_client_values(self):
     @computations.tf_computation(tf.int32, tf.int32)
     def add_numbers(x, y):
