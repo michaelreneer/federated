@@ -35,6 +35,9 @@ from tensorflow_federated.python.core.impl.executors import executor_base
 from tensorflow_federated.python.core.impl.executors import executor_utils
 from tensorflow_federated.python.core.impl.executors import executor_value_base
 
+import tf_encrypted as tfe
+from tf_encrypted.primitives.sodium.python import easy_box
+
 
 
 class FederatingExecutorValue(executor_value_base.ExecutorValue):
@@ -603,20 +606,19 @@ class FederatingExecutor(executor_base.Executor):
   @tracing.trace
   async def _encrypt_client_tensors(self, arg):
 
-    @computations.tf_computation(tf.int32, tf.string)
+    @computations.tf_computation(tf.float32, tf.string)
     @tf.function
     def encrypt_tensor(x, aggregator_key):
-      nonce = tf.random.uniform((), 100, 1000, tf.int32)
-      pk_c = tf.random.uniform((), 100, 1000, tf.int32)
-      sk_c = tf.random.uniform((), 100, 1000, tf.int32)
-      variant = tf.data.Dataset.from_tensor_slices([1]) 
+      pk_c, sk_c = easy_box.gen_keypair()
+      nonce = easy_box.gen_nonce()
+      ciphertext, _ = easy_box.seal_detached(x, nonce, pk_c, sk_c)
 
       tf.print("This tensor is encrypted:", x)
-      tf.print("Trusted aggregator public key:", aggregator_key)
-      tf.print("Client public key:", pk_c)
-      tf.print("Client secret key:", sk_c)
-      tf.print("Nonce value: ", nonce)
-      tf.print("I can work with variant", variant._variant_tensor.dtype)
+      tf.print("Trusted aggregator public key:", ciphertext.raw)
+      tf.print("Client public key:", pk_c.raw)
+      tf.print("Client secret key:", sk_c.raw)
+      tf.print("Nonce value: ", nonce.raw)
+      
       # Note: we should also return to the trusted aggregator
       # the nonce and client public key as tuple. The trusted 
       # aggregator should take this tuple as arg to decode tensors

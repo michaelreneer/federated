@@ -120,35 +120,21 @@ def _produce_test_value(
 
 class SecureClientTest(parameterized.TestCase):
 
-  def test_federated_secure_client(self):
-    @computations.tf_computation(tf.int32, tf.int32)
-    def add_numbers(x, y):
-      return x + y
-
-    @computations.federated_computation
-    def comp():
-      return intrinsics.federated_reduce(
-          intrinsics.federated_value(10, placements.CLIENTS), 
-          0, add_numbers)
-
-    result = _run_test_comp_produces_federated_value(self, comp, num_clients=3)
-    self.assertEqual(result.numpy(), 30)
-
   def test_federated_zip_secure_client_values(self):
-    @computations.tf_computation(tf.int32, tf.int32)
-    def add_numbers(x, y):
+    @computations.tf_computation(tf.float32, tf.float32)
+    def add_numbers_on_clients(x, y):
       return x + y
 
-    @computations.tf_computation(tf.int32, tf.int32)
-    def encrypt_tensor(x, y):
+    @computations.tf_computation(tf.float32, tf.float32)
+    def add_numbers_on_server(x, y):
       return tf.add(x, y)
 
     @computations.federated_computation
     def comp():
       return intrinsics.federated_reduce(
-        intrinsics.federated_map(encrypt_tensor,
-          intrinsics.federated_value((10, 10), placements.CLIENTS)), 
-          0, add_numbers)
+        intrinsics.federated_map(add_numbers_on_clients,
+          intrinsics.federated_value((10.0, 10.0), placements.CLIENTS)), 
+          0.0, add_numbers_on_server)
 
     result = _run_test_comp_produces_federated_value(self, comp, num_clients=3)
     self.assertEqual(result.numpy(), 60)
