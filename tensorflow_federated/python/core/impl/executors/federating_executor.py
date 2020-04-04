@@ -614,7 +614,7 @@ class FederatingExecutor(executor_base.Executor):
       nonce = easy_box.gen_nonce()
       ciphertext, _ = easy_box.seal_detached(plaintext, nonce, pk_c, sk_c)
 
-      tf.print("This tensor is encrypted:", x)
+      tf.print("This tensor is encrypted:", plaintext)
       tf.print("Trusted aggregator public key:", ciphertext.raw)
       tf.print("Client public key:", pk_c.raw)
       tf.print("Client secret key:", sk_c.raw)
@@ -648,17 +648,23 @@ class FederatingExecutor(executor_base.Executor):
 
     @computations.tf_computation(tf.float32, tf.uint8)
     @tf.function
-    def decrypt_tensor(ciphertext, aggregator_key):
+    def decrypt_tensor(ciphertext, pk_c):
+      pk_s, sk_s = easy_box.gen_keypair()
       pk_r, sk_r = easy_box.gen_keypair()
       nonce = easy_box.gen_nonce()
-      plaintext, _ = easy_box.seal_detached(ciphertext, nonce, pk_r, sk_r)
+      plaintext = tf.constant([1, 2, 3, 4], shape=(2, 2), dtype=tf.uint8)
+      nonce = easy_box.gen_nonce()
+      cipher, mac = easy_box.seal_detached(plaintext, nonce, pk_r, sk_s)
+      plaintext_recovered = easy_box.open_detached(
+            cipher, mac, nonce, pk_s, sk_r, tf.float32
+        )
       
-      tf.print("This tensor is decrypted:", x)
+      tf.print("This tensor is decrypted:", ciphertext)
 
       # Note: we should also return to the trusted aggregator
       # the nonce and client public key as tuple. The trusted 
       # aggregator should take this tuple as arg to decode tensors
-      return tf.identity(x)
+      return tf.identity(ciphertext)
 
     # Trusted aggregator generate public key and share with clients
     pk_aggregator = await self._trusted_aggregator_public_key()
@@ -707,7 +713,7 @@ class FederatingExecutor(executor_base.Executor):
 
     async def _move(v):
       return await child.create_value(await v.compute(), item_type)
-    #import pdb; pdb.set_trace()
+    
     items = await asyncio.gather(*[_move(v) for v in val])
     
     # Decrypt tensors moved to the server before applying reduce
@@ -716,6 +722,8 @@ class FederatingExecutor(executor_base.Executor):
     for item in items:
       decrypted_tensor = await self._decrypt_tensors_on_aggregator([item])
       items_decrypted.append(decrypted_tensor.internal_representation[0])
+
+    #import pdb; pdb.set_trace()    
     
     zero = await child.create_value(
         await (await self.create_selection(arg, index=1)).compute(), zero_type)
