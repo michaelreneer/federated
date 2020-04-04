@@ -595,7 +595,10 @@ class FederatingExecutor(executor_base.Executor):
     for i in range(len(val)):
       client_ex = self._target_executors[placement_literals.CLIENTS][i]
       val_eager_val = val[i]
-      key_eager_val = key.internal_representation[i]
+      if isinstance(key.internal_representation, list):
+        key_eager_val = key.internal_representation[i]
+      else:
+        key_eager_val = key.internal_representation
 
       k_v_zip = await client_ex.create_tuple(
         anonymous_tuple.AnonymousTuple([(None, val_eager_val), (None, key_eager_val)])
@@ -605,26 +608,6 @@ class FederatingExecutor(executor_base.Executor):
 
     return val_key_zipped
 
-  @tracing.trace
-  async def _zip_val_key_decrypt(self, val, key):
-    
-    # zip values and keys EagerValues on each client using their 
-    # respective eager executor
-    val_key_zipped = []
-    for i in range(len(val)):
-      client_ex = self._target_executors[placement_literals.CLIENTS][i]
-      val_eager_val = val[i]
-      key_eager_val = key.internal_representation
-
-      k_v_zip = await client_ex.create_tuple(
-        anonymous_tuple.AnonymousTuple([(None, val_eager_val), (None, key_eager_val)])
-      )
-
-      val_key_zipped.append(k_v_zip)
-
-    return val_key_zipped
-
-  
   @tracing.trace
   async def _encrypt_client_tensors(self, arg, pk_a):
 
@@ -733,7 +716,7 @@ class FederatingExecutor(executor_base.Executor):
     
     items = await asyncio.gather(*[_move(v) for v in val])
 
-    items_key_zipped = await self._zip_val_key_decrypt(items, sk_a)
+    items_key_zipped = await self._zip_val_key(items, sk_a)
     
     # Decrypt tensors moved to the server before applying reduce
     # In the future should be decrypted by the Trusted aggregator
