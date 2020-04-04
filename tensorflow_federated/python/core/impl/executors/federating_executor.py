@@ -572,10 +572,11 @@ class FederatingExecutor(executor_base.Executor):
     
     # Generate as string for test purpose
     # Libsodium use variant type for the key
-    tensor_type = computation_types.TensorType(tf.string)
+    tensor_type = computation_types.TensorType(tf.uint8)
+    pk_g_a, sk_g_a = easy_box.gen_keypair()
 
     pk_a = await executor_utils.embed_tf_scalar_constant(
-        self, tensor_type, '132343242')
+        self, tensor_type, tf.constant(pk_g_a.raw[0]))
 
     # Share public key with each clients
     pk_a_shared = await self._compute_intrinsic_federated_value_at_clients(
@@ -606,12 +607,12 @@ class FederatingExecutor(executor_base.Executor):
   @tracing.trace
   async def _encrypt_client_tensors(self, arg):
 
-    @computations.tf_computation(tf.float32, tf.string)
+    @computations.tf_computation(tf.float32, tf.uint8)
     @tf.function
-    def encrypt_tensor(x, aggregator_key):
+    def encrypt_tensor(plaintext, aggregator_key):
       pk_c, sk_c = easy_box.gen_keypair()
       nonce = easy_box.gen_nonce()
-      ciphertext, _ = easy_box.seal_detached(x, nonce, pk_c, sk_c)
+      ciphertext, _ = easy_box.seal_detached(plaintext, nonce, pk_c, sk_c)
 
       tf.print("This tensor is encrypted:", x)
       tf.print("Trusted aggregator public key:", ciphertext.raw)
@@ -622,7 +623,7 @@ class FederatingExecutor(executor_base.Executor):
       # Note: we should also return to the trusted aggregator
       # the nonce and client public key as tuple. The trusted 
       # aggregator should take this tuple as arg to decode tensors
-      return tf.identity(x)
+      return tf.identity(plaintext)
 
     # Trusted aggregator generate public key and share with clients
     pk_aggregator = await self._trusted_aggregator_public_key()
@@ -631,7 +632,8 @@ class FederatingExecutor(executor_base.Executor):
     fn = encrypt_tensor._computation_proto
     val_type = arg.type_signature[0]
     val = arg.internal_representation[0]
-      
+    #import pdb; pdb.set_trace()
+
     val_key_zipped = await self._zip_val_key(val, pk_aggregator)
 
     return await self._compute_intrinsic_federated_map(
@@ -640,6 +642,43 @@ class FederatingExecutor(executor_base.Executor):
                 [(None, fn), (None,  val_key_zipped)]),
             computation_types.NamedTupleType(
                 (fn_type, val_type))))
+
+  @tracing.trace
+  async def _decrypt_tensors_on_aggregator(self, val):
+
+    @computations.tf_computation(tf.float32, tf.uint8)
+    @tf.function
+    def decrypt_tensor(ciphertext, aggregator_key):
+      pk_r, sk_r = easy_box.gen_keypair()
+      nonce = easy_box.gen_nonce()
+      plaintext, _ = easy_box.seal_detached(ciphertext, nonce, pk_r, sk_r)
+      
+      tf.print("This tensor is decrypted:", x)
+
+      # Note: we should also return to the trusted aggregator
+      # the nonce and client public key as tuple. The trusted 
+      # aggregator should take this tuple as arg to decode tensors
+      return tf.identity(x)
+
+    # Trusted aggregator generate public key and share with clients
+    pk_aggregator = await self._trusted_aggregator_public_key()
+
+    val_type = computation_types.FederatedType(computation_types.TensorType(tf.float32),
+                                                  placement_literals.SERVER,
+                                                  all_equal=False)
+
+    fn_type = decrypt_tensor.type_signature
+    fn = decrypt_tensor._computation_proto
+
+    val_key_zipped = await self._zip_val_key(val, pk_aggregator)
+
+    return await self._compute_intrinsic_federated_map(
+        FederatingExecutorValue(
+            anonymous_tuple.AnonymousTuple(
+                [(None, fn), (None,  val_key_zipped)]),
+            computation_types.NamedTupleType(
+                (fn_type, val_type))))
+
 
   @tracing.trace
   async def _compute_intrinsic_federated_reduce(self, arg):
@@ -668,15 +707,22 @@ class FederatingExecutor(executor_base.Executor):
 
     async def _move(v):
       return await child.create_value(await v.compute(), item_type)
-
+    #import pdb; pdb.set_trace()
     items = await asyncio.gather(*[_move(v) for v in val])
+    
+    # Decrypt tensors moved to the server before applying reduce
+    # In the future should be decrypted by the Trusted aggregator
+    items_decrypted = []
+    for item in items:
+      decrypted_tensor = await self._decrypt_tensors_on_aggregator([item])
+      items_decrypted.append(decrypted_tensor.internal_representation[0])
     
     zero = await child.create_value(
         await (await self.create_selection(arg, index=1)).compute(), zero_type)
     op = await child.create_value(arg.internal_representation[2], op_type)
 
     result = zero
-    for item in items:
+    for item in items_decrypted:
       result = await child.create_call(
           op, await child.create_tuple(
               anonymous_tuple.AnonymousTuple([(None, result), (None, item)])))
