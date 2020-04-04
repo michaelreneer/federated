@@ -605,6 +605,25 @@ class FederatingExecutor(executor_base.Executor):
 
     return val_key_zipped
 
+  @tracing.trace
+  async def _zip_val_key_decrypt(self, val, key):
+    
+    # zip values and keys EagerValues on each client using their 
+    # respective eager executor
+    val_key_zipped = []
+    for i in range(len(val)):
+      client_ex = self._target_executors[placement_literals.CLIENTS][i]
+      val_eager_val = val[i]
+      key_eager_val = key.internal_representation
+
+      k_v_zip = await client_ex.create_tuple(
+        anonymous_tuple.AnonymousTuple([(None, val_eager_val), (None, key_eager_val)])
+      )
+
+      val_key_zipped.append(k_v_zip)
+
+    return val_key_zipped
+
   
   @tracing.trace
   async def _encrypt_client_tensors(self, arg, pk_a):
@@ -648,9 +667,9 @@ class FederatingExecutor(executor_base.Executor):
   @tracing.trace
   async def _decrypt_tensors_on_aggregator(self, val):
 
-    @computations.tf_computation(tf.float32, tf.uint8, tf.uint8, tf.uint8)
+    @computations.tf_computation(tf.float32, tf.uint8, tf.uint8, tf.uint8, tf.uint8)
     @tf.function
-    def decrypt_tensor(ciphertext, mac, pk_c, nonce):
+    def decrypt_tensor(ciphertext, mac, pk_c, nonce, sk_a):
       pk_s, sk_s = easy_box.gen_keypair()
       pk_r, sk_r = easy_box.gen_keypair()
       nonce = easy_box.gen_nonce()
@@ -713,11 +732,13 @@ class FederatingExecutor(executor_base.Executor):
       return await child.create_value(await v.compute(), item_type)
     
     items = await asyncio.gather(*[_move(v) for v in val])
+
+    items_key_zipped = await self._zip_val_key_decrypt(items, sk_a)
     
     # Decrypt tensors moved to the server before applying reduce
     # In the future should be decrypted by the Trusted aggregator
     items_decrypted = []
-    for item in items:
+    for item in items_key_zipped:
       decrypted_tensor = await self._decrypt_tensors_on_aggregator([item])
       items_decrypted.append(decrypted_tensor.internal_representation[0])   
     
