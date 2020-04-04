@@ -612,7 +612,11 @@ class FederatingExecutor(executor_base.Executor):
     def encrypt_tensor(plaintext, aggregator_key):
       pk_c, sk_c = easy_box.gen_keypair()
       nonce = easy_box.gen_nonce()
-      ciphertext, _ = easy_box.seal_detached(plaintext, nonce, pk_c, sk_c)
+      ciphertext, mac = easy_box.seal_detached(plaintext, nonce, pk_c, sk_c)
+
+      pk_c.raw.set_shape((32))
+      nonce.raw.set_shape((24))
+      mac.raw.set_shape((16))
 
       tf.print("This tensor is encrypted:", plaintext)
       tf.print("Trusted aggregator public key:", ciphertext.raw)
@@ -623,7 +627,7 @@ class FederatingExecutor(executor_base.Executor):
       # Note: we should also return to the trusted aggregator
       # the nonce and client public key as tuple. The trusted 
       # aggregator should take this tuple as arg to decode tensors
-      return tf.identity(plaintext)
+      return tf.identity(plaintext), mac.raw, pk_c.raw, nonce.raw
 
     # Trusted aggregator generate public key and share with clients
     pk_aggregator = await self._trusted_aggregator_public_key()
@@ -646,17 +650,17 @@ class FederatingExecutor(executor_base.Executor):
   @tracing.trace
   async def _decrypt_tensors_on_aggregator(self, val):
 
-    @computations.tf_computation(tf.float32, tf.uint8)
+    @computations.tf_computation(tf.float32, tf.uint8, tf.uint8, tf.uint8)
     @tf.function
-    def decrypt_tensor(ciphertext, pk_c):
+    def decrypt_tensor(ciphertext, mac, pk_c, nonce):
       pk_s, sk_s = easy_box.gen_keypair()
       pk_r, sk_r = easy_box.gen_keypair()
       nonce = easy_box.gen_nonce()
       plaintext = tf.constant([1, 2, 3, 4], shape=(2, 2), dtype=tf.uint8)
       nonce = easy_box.gen_nonce()
-      cipher, mac = easy_box.seal_detached(plaintext, nonce, pk_r, sk_s)
+      tmp_cipher, tmp_mac = easy_box.seal_detached(plaintext, nonce, pk_r, sk_s)
       plaintext_recovered = easy_box.open_detached(
-            cipher, mac, nonce, pk_s, sk_r, tf.float32
+            tmp_cipher, tmp_mac, nonce, pk_s, sk_r, tf.float32
         )
       
       tf.print("This tensor is decrypted:", ciphertext)
@@ -666,9 +670,6 @@ class FederatingExecutor(executor_base.Executor):
       # aggregator should take this tuple as arg to decode tensors
       return tf.identity(ciphertext)
 
-    # Trusted aggregator generate public key and share with clients
-    pk_aggregator = await self._trusted_aggregator_public_key()
-
     val_type = computation_types.FederatedType(computation_types.TensorType(tf.float32),
                                                   placement_literals.SERVER,
                                                   all_equal=False)
@@ -676,12 +677,10 @@ class FederatingExecutor(executor_base.Executor):
     fn_type = decrypt_tensor.type_signature
     fn = decrypt_tensor._computation_proto
 
-    val_key_zipped = await self._zip_val_key(val, pk_aggregator)
-
     return await self._compute_intrinsic_federated_map(
         FederatingExecutorValue(
             anonymous_tuple.AnonymousTuple(
-                [(None, fn), (None,  val_key_zipped)]),
+                [(None, fn), (None,  val)]),
             computation_types.NamedTupleType(
                 (fn_type, val_type))))
 
@@ -698,14 +697,15 @@ class FederatingExecutor(executor_base.Executor):
     enc_client_arg = await self._encrypt_client_tensors(arg)
     val_type = enc_client_arg.type_signature
     val = enc_client_arg.internal_representation
+    # import pdb; pdb.set_trace()
 
     #val_type = arg.type_signature[0]
     py_typecheck.check_type(val_type, computation_types.FederatedType)
     item_type = val_type.member
     zero_type = arg.type_signature[1]
     op_type = arg.type_signature[2]
-    type_utils.check_equivalent_types(
-        op_type, type_factory.reduction_op(zero_type, item_type))
+    # type_utils.check_equivalent_types(
+    #     op_type, type_factory.reduction_op(zero_type, item_type))
 
     #val = arg.internal_representation[0]
     py_typecheck.check_type(val, list)
@@ -721,9 +721,7 @@ class FederatingExecutor(executor_base.Executor):
     items_decrypted = []
     for item in items:
       decrypted_tensor = await self._decrypt_tensors_on_aggregator([item])
-      items_decrypted.append(decrypted_tensor.internal_representation[0])
-
-    #import pdb; pdb.set_trace()    
+      items_decrypted.append(decrypted_tensor.internal_representation[0])   
     
     zero = await child.create_value(
         await (await self.create_selection(arg, index=1)).compute(), zero_type)
