@@ -568,7 +568,7 @@ class FederatingExecutor(executor_base.Executor):
     return await self._zip(arg, placement_literals.CLIENTS, all_equal=False)
 
   @tracing.trace
-  async def _trusted_aggregator_public_key(self):
+  async def _trusted_aggregator_generate_keys(self):
     
     # Generate as string for test purpose
     # Libsodium use variant type for the key
@@ -577,12 +577,14 @@ class FederatingExecutor(executor_base.Executor):
 
     pk_a = await executor_utils.embed_tf_scalar_constant(
         self, tensor_type, tf.constant(pk_g_a.raw[0]))
+    sk_a = await executor_utils.embed_tf_scalar_constant(
+        self, tensor_type, tf.constant(sk_g_a.raw[0]))
 
     # Share public key with each clients
     pk_a_shared = await self._compute_intrinsic_federated_value_at_clients(
         pk_a
     )
-    return pk_a_shared
+    return pk_a_shared, sk_a
 
   @tracing.trace
   async def _zip_val_key(self, val, key):
@@ -605,7 +607,7 @@ class FederatingExecutor(executor_base.Executor):
 
   
   @tracing.trace
-  async def _encrypt_client_tensors(self, arg):
+  async def _encrypt_client_tensors(self, arg, pk_a):
 
     @computations.tf_computation(tf.float32, tf.uint8)
     @tf.function
@@ -629,16 +631,12 @@ class FederatingExecutor(executor_base.Executor):
       # aggregator should take this tuple as arg to decode tensors
       return tf.identity(plaintext), mac.raw, pk_c.raw, nonce.raw
 
-    # Trusted aggregator generate public key and share with clients
-    pk_aggregator = await self._trusted_aggregator_public_key()
-
     fn_type = encrypt_tensor.type_signature
     fn = encrypt_tensor._computation_proto
     val_type = arg.type_signature[0]
     val = arg.internal_representation[0]
-    #import pdb; pdb.set_trace()
 
-    val_key_zipped = await self._zip_val_key(val, pk_aggregator)
+    val_key_zipped = await self._zip_val_key(val, pk_a)
 
     return await self._compute_intrinsic_federated_map(
         FederatingExecutorValue(
@@ -694,10 +692,10 @@ class FederatingExecutor(executor_base.Executor):
           'found {}.'.format(len(arg.internal_representation)))
 
     #Encrypt client values
-    enc_client_arg = await self._encrypt_client_tensors(arg)
+    pk_a, sk_a = await self._trusted_aggregator_generate_keys()
+    enc_client_arg = await self._encrypt_client_tensors(arg, pk_a)
     val_type = enc_client_arg.type_signature
     val = enc_client_arg.internal_representation
-    # import pdb; pdb.set_trace()
 
     #val_type = arg.type_signature[0]
     py_typecheck.check_type(val_type, computation_types.FederatedType)
