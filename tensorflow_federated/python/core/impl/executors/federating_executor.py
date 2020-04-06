@@ -613,25 +613,26 @@ class FederatingExecutor(executor_base.Executor):
 
     @computations.tf_computation(tf.float32, tf.uint8)
     @tf.function
-    def encrypt_tensor(plaintext, aggregator_key):
+    def encrypt_tensor(plaintext, pk_a):
       pk_c, sk_c = easy_box.gen_keypair()
       nonce = easy_box.gen_nonce()
+      # Note: should use pk_a (aggregator public key) instead of pk_c
+      # Need to  first fix _trusted_aggregator_generate_keys method
       ciphertext, mac = easy_box.seal_detached(plaintext, nonce, pk_c, sk_c)
 
       pk_c.raw.set_shape((32))
       nonce.raw.set_shape((24))
       mac.raw.set_shape((16))
 
-      tf.print("This tensor is encrypted:", plaintext)
-      tf.print("Trusted aggregator public key:", ciphertext.raw)
+      tf.print("Original tensor: ", plaintext)
+      tf.print("This tensor is encrypted:", ciphertext.raw)
+      tf.print("Trusted aggregator public key:", pk_a)
       tf.print("Client public key:", pk_c.raw)
       tf.print("Client secret key:", sk_c.raw)
       tf.print("Nonce value: ", nonce.raw)
       
-      # Note: we should also return to the trusted aggregator
-      # the nonce and client public key as tuple. The trusted 
-      # aggregator should take this tuple as arg to decode tensors
-      return tf.identity(plaintext), mac.raw, pk_c.raw, nonce.raw
+      # Note: will return ciphertext not plaintext
+      return plaintext, mac.raw, pk_c.raw, nonce.raw
 
     fn_type = encrypt_tensor.type_signature
     fn = encrypt_tensor._computation_proto
@@ -653,21 +654,22 @@ class FederatingExecutor(executor_base.Executor):
     @computations.tf_computation(tf.float32, tf.uint8, tf.uint8, tf.uint8, tf.uint8)
     @tf.function
     def decrypt_tensor(ciphertext, mac, pk_c, nonce, sk_a):
-      pk_s, sk_s = easy_box.gen_keypair()
-      pk_r, sk_r = easy_box.gen_keypair()
+      # Note: will just run  easy_box.open_detached once, 
+      # _trusted_aggregator_generate_keys is fixed
+      pk_c, sk_c = easy_box.gen_keypair()
+      pk_a, sk_a = easy_box.gen_keypair()
       nonce = easy_box.gen_nonce()
       plaintext = tf.constant([1, 2, 3, 4], shape=(2, 2), dtype=tf.uint8)
       nonce = easy_box.gen_nonce()
-      tmp_cipher, tmp_mac = easy_box.seal_detached(plaintext, nonce, pk_r, sk_s)
+      tmp_cipher, tmp_mac = easy_box.seal_detached(plaintext, nonce, pk_a, sk_c)
+
       plaintext_recovered = easy_box.open_detached(
-            tmp_cipher, tmp_mac, nonce, pk_s, sk_r, tf.float32
+            tmp_cipher, tmp_mac, nonce, pk_c, sk_a, tf.float32
         )
       
-      tf.print("This tensor is decrypted:", ciphertext)
+      tf.print("This tensor is decrypted:", plaintext_recovered)
 
-      # Note: we should also return to the trusted aggregator
-      # the nonce and client public key as tuple. The trusted 
-      # aggregator should take this tuple as arg to decode tensors
+      # Note: will return plaintext_recovered
       return tf.identity(ciphertext)
 
     val_type = computation_types.FederatedType(computation_types.TensorType(tf.float32),
