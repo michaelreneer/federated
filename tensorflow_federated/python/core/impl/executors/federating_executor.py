@@ -35,8 +35,7 @@ from tensorflow_federated.python.core.impl.executors import executor_base
 from tensorflow_federated.python.core.impl.executors import executor_utils
 from tensorflow_federated.python.core.impl.executors import executor_value_base
 
-import tf_encrypted as tfe
-from tf_encrypted.primitives.sodium.python import easy_box
+from tf_encrypted.primitives.sodium import easy_box
 
 
 
