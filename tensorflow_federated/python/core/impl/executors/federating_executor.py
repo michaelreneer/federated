@@ -117,6 +117,7 @@ class FederatingExecutorValue(executor_value_base.ExecutorValue):
                                   py_typecheck.type_string(type(self._value))))
 
 
+# pylint: disable=protected-access
 class IntrinsicStrategy(abc.ABC):
   """Base class for intrinsic strategies.
 
@@ -126,7 +127,7 @@ class IntrinsicStrategy(abc.ABC):
   See concrete implementations for more details.
   """
 
-  def __init__(self, federating_executor: FederatingExecutor):
+  def __init__(self, federating_executor):
     self.federating_executor = federating_executor
 
   @classmethod
@@ -232,9 +233,6 @@ class CentralizedIntrinsicStrategy(IntrinsicStrategy):
   assuming the role of the parameter server.
   """
 
-  def __init__(self, federating_executor):
-    super().__init__(federating_executor)
-
   @classmethod
   def validate_executor_placements(cls, executor_placements):
     py_typecheck.check_type(executor_placements, dict)
@@ -257,11 +255,11 @@ class CentralizedIntrinsicStrategy(IntrinsicStrategy):
 
   async def federated_value_at_clients(self, arg):
     return await executor_utils.compute_intrinsic_federated_value(
-        self.executor, arg, placement_literals.CLIENTS)
+        self.federating_executor, arg, placement_literals.CLIENTS)
 
   async def federated_value_at_server(self, arg):
     return await executor_utils.compute_intrinsic_federated_value(
-        self.executor, arg, placement_literals.SERVER)
+        self.federating_executor, arg, placement_literals.SERVER)
 
   async def federated_eval_at_server(self, arg):
     return await self._eval(arg, placement_literals.SERVER, True)
@@ -285,7 +283,7 @@ class CentralizedIntrinsicStrategy(IntrinsicStrategy):
           'Federated broadcast expects a value with a single representation, '
           'found {}.'.format(len(arg.internal_representation)))
     return await executor_utils.compute_intrinsic_federated_broadcast(
-        self.executor, arg)
+        self.federating_executor, arg)
 
   async def federated_zip_at_server(self, arg):
     return await self._zip(arg, placement_literals.SERVER, all_equal=True)
@@ -439,6 +437,9 @@ class CentralizedIntrinsicStrategy(IntrinsicStrategy):
 
   async def federated_secure_sum(self, arg):
     raise NotImplementedError('The secure sum intrinsic is not implemented.')
+
+
+# pylint: enable=missing-function-docstring,protected-access
 
 
 class FederatingExecutor(executor_base.Executor):
