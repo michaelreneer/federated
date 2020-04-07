@@ -864,38 +864,3 @@ class FederatingExecutor(executor_base.Executor):
   @tracing.trace
   async def _compute_intrinsic_federated_secure_sum(self, arg):
     raise NotImplementedError('The secure sum intrinsic is not implemented.')
-
-
-@tracing.trace
-async def _encrypt_client_tensors(self, arg, pk_a):
-
-  input_type = extract_tensor_type(arg)
-
-  @computations.tf_computation(input_type, tf.uint8)
-  def encrypt_tensor(plaintext, pk_a):
-
-    pk_a = easy_box.PublicKey(pk_a)
-    pk_c, sk_c = easy_box.gen_keypair()
-    nonce = easy_box.gen_nonce()
-    ciphertext, mac = easy_box.seal_detached(plaintext, nonce, pk_a, sk_c)
-
-    pk_c.raw.set_shape((32))
-    nonce.raw.set_shape((24))
-    mac.raw.set_shape((16))
-    ciphertext.raw.set_shape((4))
-
-    return ciphertext.raw, mac.raw, pk_c.raw, nonce.raw
-
-  fn_type = encrypt_tensor.type_signature
-  fn = encrypt_tensor._computation_proto
-  val_type = arg.type_signature[0]
-  val = arg.internal_representation[0]
-
-  val_key_zipped = await self._zip_val_key(val, pk_a)
-
-  return await self._compute_intrinsic_federated_map(
-      FederatingExecutorValue(
-          anonymous_tuple.AnonymousTuple(
-              [(None, fn), (None,  val_key_zipped)]),
-          computation_types.NamedTupleType(
-              (fn_type, val_type))))
