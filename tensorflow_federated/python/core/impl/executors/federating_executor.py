@@ -623,15 +623,9 @@ class FederatingExecutor(executor_base.Executor):
   async def _encrypt_client_tensors(self, arg, pk_a):
 
     @computations.tf_computation(tf.float32, tf.uint8)
-    @tf.function
     def encrypt_tensor(plaintext, pk_a):
 
-      class CryptoTensor:
-        def __init__(self, raw):
-          self.raw = raw
-
-      pk_a = CryptoTensor(pk_a)
-
+      pk_a = easy_box.PublicKey(pk_a)
       pk_c, sk_c = easy_box.gen_keypair()
       nonce = easy_box.gen_nonce()
       ciphertext, mac = easy_box.seal_detached(plaintext, nonce, pk_a, sk_c)
@@ -640,9 +634,6 @@ class FederatingExecutor(executor_base.Executor):
       nonce.raw.set_shape((24))
       mac.raw.set_shape((16))
       ciphertext.raw.set_shape((4))
-
-      tf.print("Original tensor: ", plaintext)
-      tf.print("Encrypted tensor: ", ciphertext.raw)
 
       return ciphertext.raw, mac.raw, pk_c.raw, nonce.raw
 
@@ -664,24 +655,18 @@ class FederatingExecutor(executor_base.Executor):
   async def _decrypt_tensors_on_aggregator(self, val):
 
     @computations.tf_computation(tf.uint8, tf.uint8, tf.uint8, tf.uint8, tf.uint8)
-    @tf.function
     def decrypt_tensor(ciphertext, mac, pk_c, nonce, sk_a):
-
-      class CryptoTensor:
-        def __init__(self, raw):
-          self.raw = raw
       
-      ciphertext = CryptoTensor(ciphertext)
-      mac = CryptoTensor(mac)
-      pk_c = CryptoTensor(pk_c)
-      nonce = CryptoTensor(nonce)
-      sk_a = CryptoTensor(sk_a)
+      ciphertext = easy_box.Ciphertext(ciphertext)
+      mac = easy_box.Mac(mac)
+      pk_c = easy_box.PublicKey(pk_c)
+      nonce = easy_box.Nonce(nonce)
+      sk_a = easy_box.SecretKey(sk_a)
 
       plaintext_recovered = easy_box.open_detached(
             ciphertext, mac, nonce, pk_c, sk_a, tf.float32
         )
       
-      tf.print("Decrypted tensor: ", plaintext_recovered)
       plaintext_recovered.set_shape(())
 
       return plaintext_recovered
