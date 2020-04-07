@@ -117,6 +117,7 @@ class FederatingExecutorValue(executor_value_base.ExecutorValue):
                                   py_typecheck.type_string(type(self._value))))
 
 
+# pylint: disable=protected-access
 class IntrinsicStrategy(abc.ABC):
   """Base class for intrinsic strategies.
 
@@ -126,7 +127,7 @@ class IntrinsicStrategy(abc.ABC):
   See concrete implementations for more details.
   """
 
-  def __init__(self, federating_executor: FederatingExecutor):
+  def __init__(self, federating_executor):
     self.federating_executor = federating_executor
 
   @classmethod
@@ -231,9 +232,6 @@ class CentralizedIntrinsicStrategy(IntrinsicStrategy):
   It is commonly known as the parameter server strategy, with tff.SERVER
   assuming the role of the parameter server.
   """
-
-  def __init__(self, federating_executor):
-    super().__init__(federating_executor)
 
   @classmethod
   def validate_executor_placements(cls, executor_placements):
@@ -439,6 +437,9 @@ class CentralizedIntrinsicStrategy(IntrinsicStrategy):
 
   async def federated_secure_sum(self, arg):
     raise NotImplementedError('The secure sum intrinsic is not implemented.')
+
+
+# pylint: enable=missing-function-docstring,protected-access
 
 
 class FederatingExecutor(executor_base.Executor):
