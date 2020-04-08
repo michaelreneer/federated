@@ -667,8 +667,6 @@ class FederatingExecutor(executor_base.Executor):
                                                    pk_c, 
                                                    sk_a, 
                                                    clients_dtype)
-      
-      plaintext_recovered.set_shape(())
 
       return plaintext_recovered
 
