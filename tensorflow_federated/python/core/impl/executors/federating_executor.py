@@ -570,14 +570,11 @@ class FederatingExecutor(executor_base.Executor):
   async def _trusted_aggregator_generate_keys(self):
   
     pk, sk = easy_box.gen_keypair()
-    pk_shape = [32]
-    pk.raw.set_shape(pk_shape)
-    sk.raw.set_shape(pk_shape)
 
     # Place public key on clients
     ex_clients = self._target_executors[placement_literals.CLIENTS]
     pk_eager_vals = []
-    pk_type = computation_types.TensorType(tf.uint8, pk_shape)
+    pk_type = computation_types.TensorType(tf.uint8, pk.raw.shape)
     for i in range(len(ex_clients)):
       pk_eager_val = await ex_clients[i].create_value(pk.raw, pk_type)
       pk_eager_vals.append(pk_eager_val)
@@ -636,11 +633,6 @@ class FederatingExecutor(executor_base.Executor):
                                                sk_c
         )
 
-      pk_c.raw.set_shape((32))
-      nonce.raw.set_shape((24))
-      mac.raw.set_shape((16))
-      ciphertext.raw.set_shape((4))
-
       return ciphertext.raw, mac.raw, pk_c.raw, nonce.raw
 
     fn_type = encrypt_tensor.type_signature
@@ -662,7 +654,7 @@ class FederatingExecutor(executor_base.Executor):
 
     @computations.tf_computation(tf.uint8, tf.uint8, tf.uint8, tf.uint8, tf.uint8)
     def decrypt_tensor(ciphertext, mac, pk_c, nonce, sk_a):
-      
+
       ciphertext = easy_box.Ciphertext(ciphertext)
       mac = easy_box.Mac(mac)
       pk_c = easy_box.PublicKey(pk_c)
