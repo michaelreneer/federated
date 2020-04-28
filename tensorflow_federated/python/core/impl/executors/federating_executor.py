@@ -130,6 +130,108 @@ class IntrinsicStrategy(abc.ABC):
   def __init__(self, federating_executor):
     self.federating_executor = federating_executor
 
+  async def compute(self, arg):
+    py_typecheck.check_type(placement, intrinsic_defs.IntrinsicDef)
+    federated_computation_fns = {
+      intrinsic_defs.FEDERATED_AGGREGATE.uri: self.federated_aggregate
+      intrinsic_defs.FEDERATED_APPLY.uri: self.federated_apply
+      intrinsic_defs.FEDERATED_BROADCAST.uri: self.federated_broadcast
+      intrinsic_defs.FEDERATED_COLLECT.uri: self.federated_collect
+      intrinsic_defs.FEDERATED_EVAL_AT_CLIENTS.uri: self.federated_eval_at_clients
+      intrinsic_defs.FEDERATED_EVAL_AT_SERVER.uri: self.federated_eval_at_server
+      intrinsic_defs.FEDERATED_MAP.uri: self.federated_map
+      intrinsic_defs.FEDERATED_MAP_ALL_EQUAL.uri: self.federated_map_all_equal
+      intrinsic_defs.FEDERATED_MEAN.uri: self.federated_mean
+      intrinsic_defs.FEDERATED_REDUCE.uri: self.federated_reduce
+      intrinsic_defs.FEDERATED_SECURES_SUM.uri: self.federated_secure_sum
+      intrinsic_defs.FEDERATED_SUM.uri: self.federated_sum
+      intrinsic_defs.FEDERATED_VALUE_AT_CLIENTS.uri: self.federated_value_at_clients
+      intrinsic_defs.FEDERATED_VALUE_AT_SERVER.uri: self.federated_value_at_server
+      intrinsic_defs.FEDERATED_WEIGHTED_MEAN.uri: self.federated_weighted_mean
+      intrinsic_defs.FEDERATED_ZIP_AT_CLIENTS.uri: self.federated_zip_at_clients
+      intrinsic_defs.FEDERATED_ZIP_AT_SERVER.uri: self.federated_zip_at_server
+    }
+    federated_computation_fn = federated_computation_fns.get(
+        arg.internal_representation.uri)
+    if federated_computation_fn is not None:
+      federated_computation_fn(arg)
+    else:
+      raise NotImplementedError(
+          'Support for intrinsic \'{}\' has not been implemented yet.'.format(
+              comp.internal_representation.uri))
+
+  @abc.abstractmethod
+  async def federated_aggregate(self, arg):
+    raise NotImplementedError()
+
+  @abc.abstractmethod
+  async def federated_apply(self, arg):
+    raise NotImplementedError()
+
+  @abc.abstractmethod
+  async def federated_broadcast(self, arg):
+    raise NotImplementedError()
+
+  @abc.abstractmethod
+  async def federated_collect(self, arg):
+    raise NotImplementedError()
+
+  @abc.abstractmethod
+  async def federated_eval_at_clients(self, arg):
+    raise NotImplementedError()
+
+  @abc.abstractmethod
+  async def federated_eval_at_server(self, arg):
+    raise NotImplementedError()
+
+  @abc.abstractmethod
+  async def federated_map(self, arg):
+    raise NotImplementedError()
+
+  @abc.abstractmethod
+  async def federated_map_all_equal(self, arg):
+    raise NotImplementedError()
+
+  @abc.abstractmethod
+  async def federated_mean(self, arg):
+    raise NotImplementedError()
+
+  @abc.abstractmethod
+  async def federated_reduce(self, arg):
+    raise NotImplementedError()
+
+  @abc.abstractmethod
+  async def federated_secure_sum(self, arg):
+    raise NotImplementedError()
+
+  @abc.abstractmethod
+  async def federated_sum(self, arg):
+    raise NotImplementedError()
+
+  @abc.abstractmethod
+  async def federated_secure_sum(self, arg):
+    raise NotImplementedError()
+
+  @abc.abstractmethod
+  async def federated_value_at_clients(self, arg):
+    raise NotImplementedError()
+
+  @abc.abstractmethod
+  async def federated_value_at_server(self, arg):
+    raise NotImplementedError()
+
+  @abc.abstractmethod
+  async def federated_weighted_mean(self, arg):
+    raise NotImplementedError()
+
+  @abc.abstractmethod
+  async def federated_zip_at_clients(self, arg):
+    raise NotImplementedError()
+
+  @abc.abstractmethod
+  async def federated_zip_at_server(self, arg):
+    raise NotImplementedError()
+
   @classmethod
   @abc.abstractmethod
   def validate_executor_placements(cls, executor_placements):
@@ -435,9 +537,6 @@ class CentralizedIntrinsicStrategy(IntrinsicStrategy):
             placement_literals.SERVER,
             all_equal=True))
 
-  async def federated_secure_sum(self, arg):
-    raise NotImplementedError('The secure sum intrinsic is not implemented.')
-
 
 # pylint: enable=missing-function-docstring,protected-access
 
@@ -698,16 +797,7 @@ class FederatingExecutor(executor_base.Executor):
             'Directly calling computations of type {} is unsupported.'.format(
                 which_computation))
     elif isinstance(comp.internal_representation, intrinsic_defs.IntrinsicDef):
-      coro = getattr(
-          self,
-          '_compute_intrinsic_{}'.format(comp.internal_representation.uri),
-          None)
-      if coro is not None:
-        return await coro(arg)  # pylint: disable=not-callable
-      else:
-        raise NotImplementedError(
-            'Support for intrinsic "{}" has not been implemented yet.'.format(
-                comp.internal_representation.uri))
+      self.intrinsic_strategy.compute(comp.internal_representation)
     else:
       raise ValueError('Calling objects of type {} is unsupported.'.format(
           py_typecheck.type_string(type(comp.internal_representation))))
@@ -840,72 +930,3 @@ class FederatingExecutor(executor_base.Executor):
                 elements=len(value),
                 placement=placement,
                 participants=len(children)))
-
-  @tracing.trace
-  async def _compute_intrinsic_federated_value_at_server(self, arg):
-    return await self.intrinsic_strategy.federated_value_at_server(arg)
-
-  @tracing.trace
-  async def _compute_intrinsic_federated_value_at_clients(self, arg):
-    return await self.intrinsic_strategy.federated_value_at_clients(arg)
-
-  @tracing.trace
-  async def _compute_intrinsic_federated_eval_at_server(self, arg):
-    return await self.intrinsic_strategy.federated_eval_at_server(arg)
-
-  @tracing.trace
-  async def _compute_intrinsic_federated_eval_at_clients(self, arg):
-    return await self.intrinsic_strategy.federated_eval_at_clients(arg)
-
-  @tracing.trace
-  async def _compute_intrinsic_federated_apply(self, arg):
-    return await self.intrinsic_strategy.federated_apply(arg)
-
-  @tracing.trace
-  async def _compute_intrinsic_federated_map(self, arg):
-    return await self.intrinsic_strategy.federated_map(arg)
-
-  @tracing.trace
-  async def _compute_intrinsic_federated_map_all_equal(self, arg):
-    return await self.intrinsic_strategy.federated_map_all_equal(arg)
-
-  @tracing.trace
-  async def _compute_intrinsic_federated_broadcast(self, arg):
-    return await self.intrinsic_strategy.federated_broadcast(arg)
-
-  @tracing.trace
-  async def _compute_intrinsic_federated_zip_at_server(self, arg):
-    return await self.intrinsic_strategy.federated_zip_at_server(arg)
-
-  @tracing.trace
-  async def _compute_intrinsic_federated_zip_at_clients(self, arg):
-    return await self.intrinsic_strategy.federated_zip_at_clients(arg)
-
-  @tracing.trace
-  async def _compute_intrinsic_federated_reduce(self, arg):
-    return await self.intrinsic_strategy.federated_reduce(arg)
-
-  @tracing.trace
-  async def _compute_intrinsic_federated_aggregate(self, arg):
-    return await self.intrinsic_strategy.federated_aggregate(arg)
-
-  @tracing.trace
-  async def _compute_intrinsic_federated_sum(self, arg):
-    return await self.intrinsic_strategy.federated_sum(arg)
-
-  @tracing.trace
-  async def _compute_intrinsic_federated_mean(self, arg):
-    return await self.intrinsic_strategy.federated_mean(arg)
-
-  @tracing.trace
-  async def _compute_intrinsic_federated_weighted_mean(self, arg):
-    return await executor_utils.compute_intrinsic_federated_weighted_mean(
-        self, arg)
-
-  @tracing.trace
-  async def _compute_intrinsic_federated_collect(self, arg):
-    return await self.intrinsic_strategy.federated_collect(arg)
-
-  @tracing.trace
-  async def _compute_intrinsic_federated_secure_sum(self, arg):
-    return await self.intrinsic_strategy.federated_secure_sum(arg)
